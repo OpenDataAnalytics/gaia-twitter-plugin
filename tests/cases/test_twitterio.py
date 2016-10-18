@@ -32,7 +32,7 @@ class TestGaiaProcessors(unittest.TestCase):
         Test TwitterIO conversion of feed to geojson
         """
         with open(os.path.join(testfile_path,
-                            'twitter_feed.json')) as mock_feed:
+                               'twitter_feed.json')) as mock_feed:
             twitterdata = json.load(mock_feed)
         twitterio = TwitterIO()
         twitterio.data = twitterio.convertToGeojson(twitterdata)
