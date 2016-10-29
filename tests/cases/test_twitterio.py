@@ -29,17 +29,17 @@ class TestGaiaProcessors(unittest.TestCase):
 
     def test_twitter_process(self):
         """
-        Test TwitterProcess for twitter data
+        Test TwitterIO conversion of feed to geojson
         """
-        twitterdata = open(os.path.join(testfile_path,
-                           'twitter_feed.json')).read()
+        with open(os.path.join(testfile_path,
+                               'twitter_feed.json')) as mock_feed:
+            twitterdata = json.load(mock_feed)
         twitterio = TwitterIO()
-
-        geojson = twitterio.convertToGeojson(twitterdata)
+        twitterio.data = twitterio.convertToGeojson(twitterdata)
         with open(os.path.join(
                 testfile_path,
                 'twitter_process_results.json')) as exp:
             expected_json = json.load(exp)
-        actual_json = json.loads(geojson)
+        actual_json = json.loads(twitterio.read())
         self.assertEquals(len(expected_json['features']),
                           len(actual_json['features']))

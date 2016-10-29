@@ -18,6 +18,8 @@
 ###############################################################################
 import json
 import webbrowser
+from gaia import types
+
 import carmen
 
 try:
@@ -36,11 +38,21 @@ geolocator = Nominatim()
 
 class TwitterIO(FileIO):
     """
-    Convert twitter data into geojson
+    Converts a twitter data stream into GeoJSON
     """
 
+    #: Data type (vector or raster)
+    type = types.VECTOR
+
+    #: Default output format
+    default_output = formats.JSON
+
     def get_coordinates_from_tweet(self, tweet):
-        # Get location from a tweet using Carmen and geolocator
+        """
+        Get location from a tweet using Carmen and geolocator
+        :param tweet: tweet to find coordinates for
+        :return: coordinates
+        """
         resolver = carmen.get_resolver()
         resolver.load_locations()
         location = resolver.resolve_tweet(tweet)
@@ -53,80 +65,95 @@ class TwitterIO(FileIO):
             return coord
 
     def convertToGeojson(self, data):
-            if len(data) > 1:
-                geojson = {
-                    "type": "FeatureCollection",
-                    "features": []
-                }
+        """
+        Convert a raw twitter JSON feed into GeoJSON
+        :param data: raw twitter JSON
+        :return: GeoJSON object
+        """
+        if len(data) > 1:
+            geojson = {
+                "type": "FeatureCollection",
+                "features": []
+            }
 
-                if type(data) is str:
-                    data = json.loads(data)
+            if type(data) is str:
+                data = json.loads(data)
 
-                for i, tweet in enumerate(data, 1):
-                    coord = self.get_coordinates_from_tweet(tweet)
-                    feature = {
-                        "type": "Feature",
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": [coord.longitude, coord.latitude]
-                        },
-                        "properties": {
-
-                        }
-                    }
-                    # Iterate over the tweet and create properties
-                    for property in tweet:
-                        feature["properties"][property] = tweet[property]
-                    geojson['features'].append(feature)
-
-            else:
-                geojson = {
+            for i, tweet in enumerate(data, 1):
+                coord = self.get_coordinates_from_tweet(tweet)
+                feature = {
                     "type": "Feature",
                     "geometry": {
                         "type": "Point",
-                        "coordinates": []
+                        "coordinates": [coord.longitude, coord.latitude]
                     },
-                    "properties": {}
+                    "properties": {
+
+                    }
                 }
+                # Iterate over the tweet and create properties
+                for property in tweet:
+                    feature["properties"][property] = tweet[property]
+                geojson['features'].append(feature)
 
-                for i, tweet in enumerate(data, 1):
-                    coord = self.get_coordinates_from_tweet(tweet)
-                    geojson["geometry"]["coordinates"] = [coord.longitude,
-                                                          coord.latitude]
-                    # Iterate over the tweet and create properties
-                    for property in tweet:
-                        geojson["properties"][property] = tweet[property]
+        else:
+            geojson = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": []
+                },
+                "properties": {}
+            }
 
-            class geoEmptyClass:
-                pass
+            for i, tweet in enumerate(data, 1):
+                coord = self.get_coordinates_from_tweet(tweet)
+                geojson["geometry"]["coordinates"] = [coord.longitude,
+                                                      coord.latitude]
+                # Iterate over the tweet and create properties
+                for property in tweet:
+                    geojson["properties"][property] = tweet[property]
 
-            if geojson["type"] == "Feature":
-                results = geoEmptyClass()
-                results.__geo_interface__ = geojson
-                self.data = GeoDataFrame.from_features([results])
-                if format == formats.JSON:
-                    return self.data.to_json()
-                else:
-                    return self.data
+        class geoEmptyClass:
+            pass
+
+        if geojson["type"] == "Feature":
+            results = geoEmptyClass()
+            results.__geo_interface__ = geojson
+            self.data = GeoDataFrame.from_features([results])
+            if format == formats.JSON:
+                return self.data.to_json()
             else:
-                self.data = GeoDataFrame.from_features(geojson["features"])
+                return self.data
+        else:
+            self.data = GeoDataFrame.from_features(geojson["features"])
 
-            return self.data.to_json()
+        return self.data.to_json()
 
-    def read(self, uri=None, format=None):
+    def read(self, uri=None, format=formats.JSON):
+        """
+        Connect to twitter API, get data, convert to GeoJSON
+        :param uri: location of twitter config file w/twitter API parameters
+        :param format: output format
+        :return: data in output format
+        """
         if not format:
             format = self.default_output
-        super(TwitterIO, self).read()
         if self.data is None:
-            self.data = open(self.uri).read()
-            self.data = json.loads(self.data)['data_inputs']
+            if not uri:
+                uri = self.inputs[0].uri
+
+            with open(uri) as config_file:
+                config_json = json.load(config_file)
+
+            twitter_config = config_json['data_inputs']
             twitter = OAuth1Service(
-                consumer_key=self.data['consumer_key'],
-                consumer_secret=self.data['consumer_secret'],
-                request_token_url=self.data['request_token_url'],
-                access_token_url=self.data['access_token_url'],
-                authorize_url=self.data['authorize_url'],
-                base_url=self.data['base_url']
+                consumer_key=twitter_config['consumer_key'],
+                consumer_secret=twitter_config['consumer_secret'],
+                request_token_url=twitter_config['request_token_url'],
+                access_token_url=twitter_config['access_token_url'],
+                authorize_url=twitter_config['authorize_url'],
+                base_url=twitter_config['base_url']
             )
 
             request_token, request_token_secret = twitter.get_request_token()
@@ -142,8 +169,8 @@ class TwitterIO(FileIO):
                                                data={'oauth_verifier': pincode})
 
             # Include retweets
-            params = {'include_rts': self.data['include_retweets'],
-                      'count': self.data['count']}
+            params = {'include_rts': twitter_config['include_retweets'],
+                      'count': twitter_config['count']}
 
             r = session.get('statuses/home_timeline.json',
                             params=params, verify=True)
@@ -153,8 +180,7 @@ class TwitterIO(FileIO):
             # otherwise create FeatureCollection
             self.convertToGeojson(r.json())
         if format == formats.JSON:
-            result = self.data.to_json()
-            return result
+            return self.data.to_json()
         else:
             return self.data
 

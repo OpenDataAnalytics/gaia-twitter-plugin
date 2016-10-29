@@ -34,7 +34,7 @@ before_install:
 install:
   - export CPLUS_INCLUDE_PATH=/usr/include/gdal
   - export C_INCLUDE_PATH=/usr/include/gdal
-  - pip install git+https://github.com/OpenDataAnalytics/gaia.git@basegaia#egg=gaia
+  - pip install git+https://github.com/OpenDataAnalytics/gaia.git#egg=gaia
   - pip install -r requirements.txt
   - pip install -r requirements-dev.txt
   - pip install -e .
